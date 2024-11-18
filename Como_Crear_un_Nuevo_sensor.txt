@@ -1,0 +1,7 @@
+curl -X POST "http://tinex3.site/api/dispositivos" -H "Content-Type: application/json" -d '[
+    {
+     "id": ID,
+     "nombre": "Nombre del sensor",
+     "tipo_datos": "Variables del sensor"
+    }
+   ]'
