@@ -1,9 +1,14 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import sqlite3
+import logging
 
+# Configuración básica de la app Flask
 app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": "*"}})  # Configuración de CORS
+
+# Configuración de logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 DATABASE = 'nueva_base.db'
 
@@ -14,9 +19,9 @@ def query_db(query, args=(), one=False, many=False):
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        if many:  # Si estamos haciendo múltiples inserciones
+        if many:
             cursor.executemany(query, args)
-        else:  # Para consultas normales
+        else:
             cursor.execute(query, args)
 
         if query.strip().upper().startswith("SELECT"):
@@ -24,12 +29,12 @@ def query_db(query, args=(), one=False, many=False):
             return (rv[0] if rv else None) if one else rv
         conn.commit()
     except sqlite3.Error as e:
-        print(f"Error de SQLite: {e}")
+        logging.error(f"Error de SQLite: {e}")
         raise
     finally:
         conn.close()
 
-# Endpoint para manejar dispositivos (GET, POST y DELETE)
+# Endpoint para manejar dispositivos
 @app.route('/api/dispositivos', methods=['GET', 'POST', 'DELETE'])
 def manejar_dispositivos():
     if request.method == 'GET':
@@ -41,6 +46,7 @@ def manejar_dispositivos():
             ]
             return jsonify(dispositivos), 200
         except Exception as e:
+            logging.error(f"Error al obtener dispositivos: {str(e)}")
             return jsonify({'error': 'Error al obtener dispositivos', 'detalles': str(e)}), 500
 
     elif request.method == 'POST':
@@ -60,10 +66,7 @@ def manejar_dispositivos():
             if not all([nombre, tipo_datos]):
                 return jsonify({'error': 'Cada sensor debe tener nombre y tipo_datos'}), 400
 
-            if sensor_id:
-                sensores.append((sensor_id, nombre, tipo_datos))
-            else:
-                sensores.append((None, nombre, tipo_datos))
+            sensores.append((sensor_id, nombre, tipo_datos))
 
         try:
             query_db(
@@ -72,7 +75,10 @@ def manejar_dispositivos():
                 many=True
             )
             return jsonify({'status': 'success', 'message': f'{len(sensores)} dispositivos insertados correctamente'}), 201
+        except sqlite3.IntegrityError:
+            return jsonify({'error': 'ID duplicado o conflicto con la base de datos'}), 409
         except Exception as e:
+            logging.error(f"Error al insertar dispositivos: {str(e)}")
             return jsonify({'error': 'Error al insertar dispositivos', 'detalles': str(e)}), 500
 
     elif request.method == 'DELETE':
@@ -86,9 +92,10 @@ def manejar_dispositivos():
                 query_db("DELETE FROM dispositivos")
                 return jsonify({'status': 'success', 'message': 'Todos los dispositivos han sido eliminados'}), 200
         except Exception as e:
+            logging.error(f"Error al eliminar dispositivos: {str(e)}")
             return jsonify({'error': 'Error al eliminar dispositivos', 'detalles': str(e)}), 500
 
-# Endpoint para manejar mediciones (GET y POST)
+# Endpoint para manejar mediciones
 @app.route('/api/mediciones', methods=['GET', 'POST'])
 def manejar_mediciones():
     if request.method == 'GET':
@@ -119,7 +126,8 @@ def manejar_mediciones():
             ]
             return jsonify(mediciones), 200
         except Exception as e:
-            return jsonify({'error': 'Error al obtener datos', 'detalles': str(e)}), 500
+            logging.error(f"Error al obtener mediciones: {str(e)}")
+            return jsonify({'error': 'Error al obtener mediciones', 'detalles': str(e)}), 500
 
     elif request.method == 'POST':
         data = request.json
@@ -152,10 +160,12 @@ def manejar_mediciones():
             )
             return jsonify({'status': 'success', 'message': 'Medición insertada correctamente'}), 201
         except Exception as e:
-            return jsonify({'error': 'Error al insertar la medición', 'detalles': str(e)}), 500
+            logging.error(f"Error al insertar medición: {str(e)}")
+            return jsonify({'error': 'Error al insertar medición', 'detalles': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(
         host='0.0.0.0',
-        port=5000
+        port=5000,
+        debug=False
     )
