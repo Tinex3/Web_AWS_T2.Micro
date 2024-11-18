@@ -168,13 +168,27 @@
     const temperatureChart = new Chart(tempCtx, {
       type: 'line',
       data: { labels: [], datasets: [{ label: 'Temperatura (°C)', data: [], borderColor: 'red', tension: 0.4 }] },
-      options: { responsive: true }
+      options: {
+        responsive: true,
+        scales: {
+          y: {
+            suggestedMax: 0, // Se ajustará dinámicamente
+          },
+        },
+      },
     });
 
     const otherDataChart = new Chart(otherCtx, {
       type: 'line',
       data: { labels: [], datasets: [{ label: 'Humedad', data: [], borderColor: 'blue', tension: 0.4 }] },
-      options: { responsive: true }
+      options: {
+        responsive: true,
+        scales: {
+          y: {
+            suggestedMax: 0, // Se ajustará dinámicamente
+          },
+        },
+      },
     });
 
     // Obtener lista de sensores
@@ -203,12 +217,11 @@
       }
     }
 
-    // Ajustar hora al huso horario de Chile
-    function adjustToChileTime(timestamp) {
-      const date = new Date(timestamp);
-      const chileOffset = -3; // Chile está en UTC-3
-      date.setHours(date.getHours() + chileOffset);
-      return date.toLocaleString();
+    // Ajustar el rango del eje Y
+    function adjustYAxis(chart, data) {
+      const maxValue = Math.max(...data);
+      chart.options.scales.y.suggestedMax = maxValue + 3; // Valor máximo ajustado dinámicamente
+      chart.update();
     }
 
     // Actualizar gráficos y cajas con datos del sensor seleccionado
@@ -229,13 +242,17 @@
         }
 
         // Actualizar los datos globales
-        timestamps = data.map(d => adjustToChileTime(d.timestamp));
+        timestamps = data.map(d => d.timestamp);
         temperatureData = data.map(d => d.temperatura);
         humidityData = data.map(d => d.humedad);
 
         // Mostrar por defecto los últimos 10 puntos
         updateTemperatureChart(10);
         updateHumidityChart(10);
+
+        // Ajustar rangos de ejes Y
+        adjustYAxis(temperatureChart, temperatureData);
+        adjustYAxis(otherDataChart, humidityData);
 
         // Actualizar cajas de datos
         lastTemperature.textContent = `${temperatureData[0]} °C`;
@@ -286,11 +303,13 @@
     document.getElementById('updateTempChart').addEventListener('click', () => {
       const points = parseInt(document.getElementById('tempPoints').value, 10);
       updateTemperatureChart(points);
+      adjustYAxis(temperatureChart, temperatureData.slice(0, points)); // Ajustar eje Y
     });
 
     document.getElementById('updateHumidityChart').addEventListener('click', () => {
       const points = parseInt(document.getElementById('humidityPoints').value, 10);
       updateHumidityChart(points);
+      adjustYAxis(otherDataChart, humidityData.slice(0, points)); // Ajustar eje Y
     });
 
     // Cambiar sensor
