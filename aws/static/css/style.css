@@ -1,0 +1,106 @@
+/* Estilos Globales */
+body {
+    font-family: 'Arial', sans-serif;
+    background-color: #f4f4f4;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+}
+
+h1 {
+    font-size: 1.8rem;
+    color: #333;
+    margin-bottom: 20px;
+    text-align: center;
+}
+
+/* Contenedores */
+.container {
+    background: #ffffff;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 400px;
+    margin: 0 auto;
+    text-align: center;
+}
+
+.container-small {
+    width: 300px;
+}
+
+/* Formularios */
+label {
+    display: block;
+    margin: 10px 0 5px;
+    font-size: 14px;
+    color: #555;
+}
+
+input {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 14px;
+}
+
+input:focus {
+    border-color: #5cb85c;
+    outline: none;
+    box-shadow: 0 0 5px rgba(92, 184, 92, 0.4);
+}
+
+/* Botones */
+button {
+    background-color: #5cb85c;
+    color: #fff;
+    padding: 10px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    width: 100%;
+    font-size: 16px;
+}
+
+button:hover {
+    background-color: #4cae4c;
+}
+
+/* Mensajes de Error y Éxito */
+.error {
+    color: red;
+    font-size: 14px;
+    margin-top: 10px;
+}
+
+.success {
+    color: green;
+    font-size: 14px;
+    margin-top: 10px;
+}
+
+/* Enlaces */
+a {
+    color: #5cb85c;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* Diseño Adicional para Login */
+.login-container {
+    width: 300px;
+}
+
+/* Diseño Adicional para Registro */
+.register-container {
+    width: 350px;
+}

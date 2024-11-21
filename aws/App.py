@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
@@ -6,15 +6,15 @@ from flask_cors import CORS
 from datetime import timedelta
 
 # Configuración de la app
-app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///production.db'  # Base de datos SQLite
+app = Flask(__name__, template_folder='templates', static_folder='static')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///production.db'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['JWT_SECRET_KEY'] = 'your_production_jwt_secret_key'  # Cambia esto a un valor seguro
-app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=30)  # Tokens válidos por 30 minutos
+app.config['JWT_SECRET_KEY'] = 'your_production_jwt_secret_key'
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=30)
 db = SQLAlchemy(app)
 bcrypt = Bcrypt(app)
 jwt = JWTManager(app)
-CORS(app, resources={r"/*": {"origins": "*"}})  # Habilitar CORS para solicitudes externas
+CORS(app, resources={r"/*": {"origins": "*"}})
 
 # Modelos de la base de datos
 class User(db.Model):
@@ -35,11 +35,25 @@ class Device(db.Model):
     created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
     user = db.relationship('User', backref=db.backref('devices', lazy=True))
 
-# Crear la base de datos
+# Crear la base de datos si no existe
 with app.app_context():
     db.create_all()
 
-# Endpoints de la API
+# Rutas para servir páginas web
+@app.route('/')
+def home():
+    """Ruta principal que muestra el login"""
+    return render_template('index.html')
+
+@app.route('/dashboard')
+@jwt_required()
+def dashboard():
+    """Ruta para mostrar el dashboard del usuario"""
+    current_user = get_jwt_identity()
+    devices = Device.query.filter_by(user_id=current_user['id']).all()
+    return render_template('dashboard.html', devices=devices)
+
+# Endpoints RESTful
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -57,7 +71,7 @@ def register():
 
 @app.route('/login', methods=['POST'])
 def login():
-    """Autenticar un usuario y devolver un token"""
+    """Autenticar un usuario y devolver un token JWT"""
     data = request.json
     user = User.query.filter_by(username=data['username']).first()
     if user and bcrypt.check_password_hash(user.password, data['password']):
@@ -71,8 +85,11 @@ def get_devices():
     """Obtener dispositivos del usuario autenticado"""
     current_user = get_jwt_identity()
     devices = Device.query.filter_by(user_id=current_user['id']).all()
-    device_list = [{"device_id": d.device_id, "device_name": d.device_name, "status": d.status} for d in devices]
-    return jsonify({"devices": device_list}), 200
+    return jsonify([{
+        "device_id": d.device_id,
+        "device_name": d.device_name,
+        "status": d.status
+    } for d in devices]), 200
 
 @app.route('/devices/add', methods=['POST'])
 @jwt_required()
@@ -120,15 +137,18 @@ def sensor_status():
     """Obtener el estado de los sensores asociados al usuario autenticado"""
     current_user = get_jwt_identity()
     devices = Device.query.filter_by(user_id=current_user['id']).all()
-    status_list = []
-    for device in devices:
-        status_list.append({
-            "device_id": device.device_id,
-            "device_name": device.device_name,
-            "status": device.status
-        })
-    return jsonify({"sensor_status": status_list}), 200
+    return jsonify([{
+        "device_id": device.device_id,
+        "device_name": device.device_name,
+        "status": device.status
+    } for device in devices]), 200
+
+@app.route('/register-page')
+def register_page():
+    """Ruta para la página de registro"""
+    return render_template('register.html')
+
 
 # Ejecutar el servidor
 if __name__ == '__main__':
-    app.run(debug=False, host="0.0.0.0", port=5000)
+    app.run(debug=True, host="0.0.0.0", port=8080)

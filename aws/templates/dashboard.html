@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <h1>Bienvenido a tu Dashboard</h1>
+    <div id="device-list"></div>
+    <script>
+        async function loadDevices() {
+            const token = localStorage.getItem("access_token");
+            const response = await fetch("/devices", {
+                headers: {
+                    "Authorization": `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                const devices = await response.json();
+                const deviceList = document.getElementById("device-list");
+                devices.forEach(device => {
+                    const div = document.createElement("div");
+                    div.textContent = `${device.device_name} - Estado: ${device.status}`;
+                    deviceList.appendChild(div);
+                });
+            } else {
+                console.error("Error al cargar dispositivos");
+            }
+        }
+
+        loadDevices();
+    </script>
+</body>
+</html>

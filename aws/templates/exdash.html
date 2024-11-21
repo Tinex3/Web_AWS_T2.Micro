@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Sensores</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background-color: #f8f9fa;
+      font-family: Arial, sans-serif;
+    }
+
+    .chart-card {
+      background: #fff;
+      border-radius: 10px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+
+    .loading-spinner {
+      text-align: center;
+      margin: 20px;
+    }
+
+    .error-section {
+      display: none;
+      background: #f8d7da;
+      color: #842029;
+      border: 1px solid #f5c2c7;
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    .data-box {
+      background: #fff;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      padding: 15px;
+      text-align: center;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .data-box h4 {
+      margin: 0;
+      font-size: 18px;
+      color: #555;
+    }
+
+    .data-box p {
+      margin: 5px 0 0;
+      font-size: 24px;
+      font-weight: bold;
+      color: #333;
+    }
+
+    #lastQueryTime {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 18px;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-expand-sm navbar-dark bg-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#">Sensores Dashboard</a>
+    </div>
+  </nav>
+
+  <div class="container-fluid mt-4">
+    <div class="row">
+      <div class="col-md-3">
+        <label for="sensorSelect" class="form-label">Seleccionar Sensor:</label>
+        <select id="sensorSelect" class="form-select">
+          <option value="" disabled selected>Seleccione un sensor</option>
+        </select>
+      </div>
+
+      <div class="col-md-9">
+        <!-- Cajas de datos -->
+        <div class="row">
+          <div class="col-md-6">
+            <div class="data-box">
+              <h4>Última Temperatura (°C)</h4>
+              <p id="lastTemperature">--</p>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="data-box">
+              <h4>Última Humedad (%)</h4>
+              <p id="lastHumidity">--</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Gráficos -->
+        <div id="temp-humidity">
+          <h2 class="text-center">Datos del Sensor Seleccionado</h2>
+          <div class="row">
+            <div class="col-md-6">
+              <div class="chart-card">
+                <h4 class="text-danger">Temperatura (°C)</h4>
+                <canvas id="temperatureChart"></canvas>
+                <div class="mt-3">
+                  <label for="tempPoints" class="form-label">Puntos del Gráfico de Temperatura:</label>
+                  <input type="number" id="tempPoints" class="form-control" value="10" min="1">
+                  <button class="btn btn-primary mt-2" id="updateTempChart">Actualizar Gráfico</button>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="chart-card">
+                <h4 class="text-primary">Humedad</h4>
+                <canvas id="otherDataChart"></canvas>
+                <div class="mt-3">
+                  <label for="humidityPoints" class="form-label">Puntos del Gráfico de Humedad:</label>
+                  <input type="number" id="humidityPoints" class="form-control" value="10" min="1">
+                  <button class="btn btn-primary mt-2" id="updateHumidityChart">Actualizar Gráfico</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Spinner de Carga -->
+        <div class="loading-spinner" id="loadingSpinner">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Cargando...</span>
+          </div>
+        </div>
+
+        <!-- Sección de errores -->
+        <div id="errors" class="error-section">
+          <h4>Errores Detectados</h4>
+          <ul id="errorList"></ul>
+        </div>
+
+        <!-- Hora de la última consulta -->
+        <div id="lastQueryTime"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const sensorSelect = document.getElementById('sensorSelect');
+    const tempCtx = document.getElementById('temperatureChart').getContext('2d');
+    const otherCtx = document.getElementById('otherDataChart').getContext('2d');
+    const loadingSpinner = document.getElementById('loadingSpinner');
+    const errorSection = document.getElementById('errors');
+    const errorList = document.getElementById('errorList');
+    const lastTemperature = document.getElementById('lastTemperature');
+    const lastHumidity = document.getElementById('lastHumidity');
+    const lastQueryTime = document.getElementById('lastQueryTime');
+    let autoUpdateInterval = null;
+
+    // Variables globales para almacenar datos
+    let temperatureData = [];
+    let humidityData = [];
+    let timestamps = [];
+
+    // Inicializar los gráficos
+    const temperatureChart = new Chart(tempCtx, {
+      type: 'line',
+      data: { labels: [], datasets: [{ label: 'Temperatura (°C)', data: [], borderColor: 'red', tension: 0.4 }] },
+      options: {
+        responsive: true,
+        scales: {
+          y: {
+            suggestedMax: 0, // Se ajustará dinámicamente
+          },
+        },
+      },
+    });
+
+    const otherDataChart = new Chart(otherCtx, {
+      type: 'line',
+      data: { labels: [], datasets: [{ label: 'Humedad', data: [], borderColor: 'blue', tension: 0.4 }] },
+      options: {
+        responsive: true,
+        scales: {
+          y: {
+            suggestedMax: 0, // Se ajustará dinámicamente
+          },
+        },
+      },
+    });
+
+    // Obtener lista de sensores
+    async function fetchSensors() {
+      try {
+        const response = await fetch('https://tinex3.site/api/dispositivos');
+        if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+        const devices = await response.json();
+
+        if (devices.length === 0) {
+          throw new Error("No hay sensores disponibles.");
+        }
+
+        devices.forEach(device => {
+          const option = document.createElement('option');
+          option.value = device.id;
+          option.textContent = `${device.nombre} (ID: ${device.id})`;
+          sensorSelect.appendChild(option);
+        });
+
+        const firstSensorId = devices[0].id;
+        updateCharts(firstSensorId);
+        startAutoUpdate(firstSensorId);
+      } catch (error) {
+        showError(`Error obteniendo los sensores: ${error.message}`);
+      }
+    }
+
+    // Ajustar el rango del eje Y
+    function adjustYAxis(chart, data) {
+      const maxValue = Math.max(...data);
+      chart.options.scales.y.suggestedMax = maxValue + 3; // Valor máximo ajustado dinámicamente
+      chart.update();
+    }
+
+    // Actualizar gráficos y cajas con datos del sensor seleccionado
+    async function updateCharts(sensorId) {
+      if (!sensorId) return;
+
+      loadingSpinner.style.display = 'block';
+      errorSection.style.display = 'none';
+      errorList.innerHTML = '';
+
+      try {
+        const response = await fetch(`https://tinex3.site/api/mediciones?sensor_id=${sensorId}`);
+        if (!response.ok) throw new Error(`HTTP error! Status: ${response.status}`);
+        const data = await response.json();
+
+        if (!Array.isArray(data) || data.length === 0) {
+          throw new Error("No hay datos para este sensor.");
+        }
+
+        // Actualizar los datos globales
+        timestamps = data.map(d => d.timestamp);
+        temperatureData = data.map(d => d.temperatura);
+        humidityData = data.map(d => d.humedad);
+
+        // Mostrar por defecto los últimos 10 puntos
+        updateTemperatureChart(10);
+        updateHumidityChart(10);
+
+        // Ajustar rangos de ejes Y
+        adjustYAxis(temperatureChart, temperatureData);
+        adjustYAxis(otherDataChart, humidityData);
+
+        // Actualizar cajas de datos
+        lastTemperature.textContent = `${temperatureData[0]} °C`;
+        lastHumidity.textContent = `${humidityData[0]} %`;
+
+        // Actualizar hora de última consulta
+        const lastTimestamp = timestamps[0];
+        lastQueryTime.innerHTML = `<strong>Última consulta:</strong> ${lastTimestamp}`;
+      } catch (error) {
+        showError(`Error actualizando datos: ${error.message}`);
+      } finally {
+        loadingSpinner.style.display = 'none';
+      }
+    }
+
+    function startAutoUpdate(sensorId) {
+      if (autoUpdateInterval) clearInterval(autoUpdateInterval);
+      autoUpdateInterval = setInterval(() => {
+        updateCharts(sensorId);
+      }, 10000);
+    }
+
+    function showError(message) {
+      errorSection.style.display = 'block';
+      const errorItem = document.createElement('li');
+      errorItem.textContent = message;
+      errorList.appendChild(errorItem);
+    }
+
+    // Funciones para actualizar gráficos con el número de puntos especificado
+    function updateTemperatureChart(points) {
+      const limitedTemps = temperatureData.slice(0, points);
+      const limitedTimestamps = timestamps.slice(0, points);
+      temperatureChart.data.labels = limitedTimestamps;
+      temperatureChart.data.datasets[0].data = limitedTemps;
+      temperatureChart.update();
+    }
+
+    function updateHumidityChart(points) {
+      const limitedHumidities = humidityData.slice(0, points);
+      const limitedTimestamps = timestamps.slice(0, points);
+      otherDataChart.data.labels = limitedTimestamps;
+      otherDataChart.data.datasets[0].data = limitedHumidities;
+      otherDataChart.update();
+    }
+
+    // Manejar botones de actualización de puntos
+    document.getElementById('updateTempChart').addEventListener('click', () => {
+      const points = parseInt(document.getElementById('tempPoints').value, 10);
+      updateTemperatureChart(points);
+      adjustYAxis(temperatureChart, temperatureData.slice(0, points)); // Ajustar eje Y
+    });
+
+    document.getElementById('updateHumidityChart').addEventListener('click', () => {
+      const points = parseInt(document.getElementById('humidityPoints').value, 10);
+      updateHumidityChart(points);
+      adjustYAxis(otherDataChart, humidityData.slice(0, points)); // Ajustar eje Y
+    });
+
+    // Cambiar sensor
+    sensorSelect.addEventListener('change', () => {
+      const selectedSensorId = sensorSelect.value;
+      updateCharts(selectedSensorId);
+      startAutoUpdate(selectedSensorId);
+    });
+
+    fetchSensors();
+  </script>
+</body>
+</html>
