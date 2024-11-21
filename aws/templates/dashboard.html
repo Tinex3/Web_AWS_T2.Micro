@@ -1,37 +1,75 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Sensores</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
 <body>
-    <h1>Bienvenido a tu Dashboard</h1>
-    <div id="device-list"></div>
-    <script>
-        async function loadDevices() {
-            const token = localStorage.getItem("access_token");
-            const response = await fetch("/devices", {
-                headers: {
-                    "Authorization": `Bearer ${token}`
-                }
-            });
+  <nav class="navbar navbar-expand-sm navbar-dark bg-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand" href="#">Sensores Dashboard</a>
+    </div>
+  </nav>
 
-            if (response.ok) {
-                const devices = await response.json();
-                const deviceList = document.getElementById("device-list");
-                devices.forEach(device => {
-                    const div = document.createElement("div");
-                    div.textContent = `${device.device_name} - Estado: ${device.status}`;
-                    deviceList.appendChild(div);
-                });
-            } else {
-                console.error("Error al cargar dispositivos");
-            }
-        }
+  <div class="container-fluid mt-4">
+    <div class="row">
+      <div class="col-md-3">
+        <label for="sensorSelect" class="form-label">Seleccionar Sensor:</label>
+        <select id="sensorSelect" class="form-select">
+          <option value="" disabled selected>Seleccione un sensor</option>
+        </select>
+      </div>
 
-        loadDevices();
-    </script>
+      <div class="col-md-9">
+        <!-- Cajas de datos -->
+        <div class="row">
+          <div class="col-md-6">
+            <div class="data-box">
+              <h4>Última Temperatura (°C)</h4>
+              <p id="lastTemperature">--</p>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="data-box">
+              <h4 id="type1Label">Último Dato Tipo 1</h4>
+              <p id="lastType1">--</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Gráficos -->
+        <div id="temp-humidity">
+          <h2 class="text-center">Datos del Sensor Seleccionado</h2>
+          <div class="row">
+            <div class="col-md-6">
+              <div class="chart-card">
+                <h4 class="text-danger">Temperatura (°C)</h4>
+                <canvas id="temperatureChart"></canvas>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="chart-card">
+                <h4 id="type1GraphLabel" class="text-primary">Gráfico Tipo 1</h4>
+                <canvas id="type1Chart"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Spinner de Carga -->
+        <div class="loading-spinner" id="loadingSpinner">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Cargando...</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/dashboard.js"></script>
 </body>
 </html>
