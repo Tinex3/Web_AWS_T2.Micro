@@ -1,0 +1,11 @@
+# Ignore cache files
+*.cache
+*.tmp
+*.log
+
+# Ignore Visual Studio Code files
+.vscode/
+*.code-workspace
+
+# Ignore Python cache files
+__pycache__/
