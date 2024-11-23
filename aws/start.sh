@@ -1,19 +1,35 @@
 #!/bin/bash
 
 # Mensaje de inicio
-echo "Iniciando servicios Flask..."
+echo "Iniciando servicios Flask con entorno virtual..."
 
 # Navegar al directorio del proyecto
 echo "Navegando al directorio del proyecto..."
-cd ~/webserver || { echo "Directorio ~/webserver no encontrado. Abortando."; exit 1; }
+cd ~/App || { echo "Directorio ~/App no encontrado. Abortando."; exit 1; }
 
-# Iniciar el servidor webserver.py
-echo "Iniciando webserver.py..."
-nohup python3 webserver.py > webserver.log 2>&1 &
+# Verificar si el entorno virtual existe
+if [ ! -d "venv" ]; then
+  echo "El entorno virtual no se encuentra en ~/App/venv. Creándolo..."
+  python3 -m venv venv || { echo "Error al crear el entorno virtual. Abortando."; exit 1; }
+fi
+
+# Activar el entorno virtual
+echo "Activando el entorno virtual..."
+source venv/bin/activate || { echo "Error al activar el entorno virtual. Abortando."; exit 1; }
+
+# Instalar dependencias (opcional)
+echo "Instalando dependencias desde requirements.txt (si existe)..."
+if [ -f "requirements.txt" ]; then
+  pip install -r requirements.txt || { echo "Error al instalar dependencias. Abortando."; deactivate; exit 1; }
+fi
+
+# Iniciar el servidor App.py
+echo "Iniciando App.py..."
+nohup python3 App.py > App.log 2>&1 &
 if [ $? -eq 0 ]; then
-  echo "webserver.py iniciado correctamente. Logs en webserver.log"
+  echo "App.py iniciado correctamente. Logs en App.log"
 else
-  echo "Error al iniciar webserver.py."
+  echo "Error al iniciar App.py."
 fi
 
 # Iniciar el servidor api.py
@@ -27,7 +43,12 @@ fi
 
 # Confirmar procesos en ejecución
 echo "Procesos en ejecución:"
-ps aux | grep -E 'webserver.py|api.py' | grep -v grep
+ps aux | grep -E 'App.py|api.py' | grep -v grep
+
+# Desactivar el entorno virtual
+echo "Desactivando el entorno virtual..."
+deactivate
 
 # Mensaje de finalización
 echo "Todos los servicios han sido lanzados."
+

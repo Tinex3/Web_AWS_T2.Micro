@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from flask_sqlalchemy import SQLAlchemy
+import sqlite3
 from flask_bcrypt import Bcrypt
 from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
 from flask_cors import CORS
@@ -7,128 +7,134 @@ from datetime import timedelta
 
 # Configuración de la app
 app = Flask(__name__)
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///production.db'  # Base de datos SQLite
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['JWT_SECRET_KEY'] = 'your_production_jwt_secret_key'  # Cambia esto a un valor seguro
-app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=30)  # Tokens válidos por 30 minutos
-db = SQLAlchemy(app)
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(minutes=30)
 bcrypt = Bcrypt(app)
 jwt = JWTManager(app)
 CORS(app, resources={r"/*": {"origins": "*"}})  # Habilitar CORS para solicitudes externas
 
-# Modelos de la base de datos
-class User(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    password = db.Column(db.String(120), nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    role = db.Column(db.String(50), default="User")
-    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
-    is_active = db.Column(db.Boolean, default=True)
+# Registro de depuración de encabezados en cada solicitud
+@app.before_request
+def log_request_headers():
+    print(f"[DEBUG] Encabezados recibidos: {request.headers}")
 
-class Device(db.Model):
-    device_id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
-    device_name = db.Column(db.String(120), nullable=False)
-    device_type = db.Column(db.String(50))
-    status = db.Column(db.String(50), default="activo")
-    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
-    user = db.relationship('User', backref=db.backref('devices', lazy=True))
-
-# Crear la base de datos
-with app.app_context():
-    db.create_all()
-
-# Endpoints de la API
-
+# Endpoint para registrar usuarios
 @app.route('/register', methods=['POST'])
 def register():
     """Registrar un nuevo usuario"""
-    data = request.json
-    hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
-    new_user = User(username=data['username'], password=hashed_password, email=data['email'])
     try:
-        db.session.add(new_user)
-        db.session.commit()
-        return jsonify({"message": "Usuario registrado exitosamente"}), 201
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"message": "Error al registrar usuario", "error": str(e)}), 400
+        data = request.json
+        if not data or 'username' not in data or 'password' not in data or 'email' not in data:
+            return jsonify({"message": "Faltan campos obligatorios"}), 400
 
+        # Hash de la contraseña
+        hashed_password = bcrypt.generate_password_hash(data['password']).decode('utf-8')
+
+        # Insertar usuario en la base de datos
+        conn = sqlite3.connect('nueva_base.db')
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO users (username, password, email, role) VALUES (?, ?, ?, ?)",
+                       (data['username'], hashed_password, data['email'], 'User'))
+        conn.commit()
+        conn.close()
+
+        print(f"[DEBUG] Usuario registrado: {data['username']}")
+        return jsonify({"message": "Usuario registrado exitosamente"}), 201
+    except sqlite3.IntegrityError as e:
+        print(f"[ERROR] Usuario duplicado: {e}")
+        return jsonify({"message": "El usuario o correo ya está registrado"}), 400
+    except Exception as e:
+        print(f"[ERROR] Error interno en registro: {e}")
+        return jsonify({"message": "Error interno del servidor", "error": str(e)}), 500
+
+# Endpoint para iniciar sesión
 @app.route('/login', methods=['POST'])
 def login():
-    """Autenticar un usuario y devolver un token"""
-    data = request.json
-    user = User.query.filter_by(username=data['username']).first()
-    if user and bcrypt.check_password_hash(user.password, data['password']):
-        access_token = create_access_token(identity={"id": user.id, "role": user.role})
-        return jsonify({"access_token": access_token}), 200
-    return jsonify({"message": "Credenciales inválidas"}), 401
+    """Autenticar un usuario y devolver un token JWT"""
+    try:
+        data = request.json
+        if not data or 'username' not in data or 'password' not in data:
+            return jsonify({"message": "Faltan campos obligatorios"}), 400
 
+        # Consultar el usuario en la base de datos
+        conn = sqlite3.connect('nueva_base.db')
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, password, role FROM users WHERE username = ?", (data['username'],))
+        user = cursor.fetchone()
+        conn.close()
+
+        if not user:
+            print(f"[WARNING] Usuario no encontrado: {data['username']}")
+            return jsonify({"message": "Credenciales inválidas"}), 401
+
+        # Verificar la contraseña
+        if bcrypt.check_password_hash(user['password'], data['password']):
+            identity = f"{user['id']}|{user['role']}"
+            token = create_access_token(identity=identity)
+            print(f"[DEBUG] Usuario autenticado: {data['username']}, Token: {token}")
+            return jsonify({"access_token": token}), 200
+        else:
+            print(f"[WARNING] Contraseña incorrecta para usuario: {data['username']}")
+            return jsonify({"message": "Credenciales inválidas"}), 401
+
+    except Exception as e:
+        print(f"[ERROR] Error interno en login: {e}")
+        return jsonify({"message": "Error interno del servidor", "error": str(e)}), 500
+
+# Endpoint para obtener dispositivos
 @app.route('/devices', methods=['GET'])
 @jwt_required()
 def get_devices():
     """Obtener dispositivos del usuario autenticado"""
-    current_user = get_jwt_identity()
-    devices = Device.query.filter_by(user_id=current_user['id']).all()
-    device_list = [{"device_id": d.device_id, "device_name": d.device_name, "status": d.status} for d in devices]
-    return jsonify({"devices": device_list}), 200
+    try:
+        current_identity = get_jwt_identity()
+        print(f"[DEBUG] Usuario autenticado: {current_identity}")
+        user_id, user_role = current_identity.split('|')  # Descomponer "id|role"
 
+        conn = sqlite3.connect('nueva_base.db')
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT device_id, device_name, status FROM devices WHERE user_id = ?", (user_id,))
+        devices = cursor.fetchall()
+        conn.close()
+
+        return jsonify([{
+            "device_id": device['device_id'],
+            "device_name": device['device_name'],
+            "status": device['status']
+        } for device in devices]), 200
+    except Exception as e:
+        print(f"[ERROR] Error al obtener dispositivos: {e}")
+        return jsonify({"message": "Error al obtener dispositivos", "error": str(e)}), 500
+
+# Endpoint para añadir un dispositivo
 @app.route('/devices/add', methods=['POST'])
 @jwt_required()
 def add_device():
     """Agregar un dispositivo para el usuario autenticado"""
-    current_user = get_jwt_identity()
-    data = request.json
-    new_device = Device(
-        user_id=current_user['id'],
-        device_name=data['device_name'],
-        device_type=data.get('device_type', 'unknown'),
-        status=data.get('status', 'activo')
-    )
     try:
-        db.session.add(new_device)
-        db.session.commit()
+        current_identity = get_jwt_identity()
+        user_id, user_role = current_identity.split('|')
+
+        data = request.json
+        if not data or 'device_name' not in data:
+            return jsonify({"message": "Faltan campos obligatorios"}), 400
+
+        # Insertar dispositivo en la base de datos
+        conn = sqlite3.connect('nueva_base.db')
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO devices (user_id, device_name, device_type, status) VALUES (?, ?, ?, ?)",
+                       (user_id, data['device_name'], data.get('device_type', 'unknown'), data.get('status', 'activo')))
+        conn.commit()
+        conn.close()
+
+        print(f"[DEBUG] Dispositivo añadido: {data['device_name']} para usuario {user_id}")
         return jsonify({"message": "Dispositivo añadido exitosamente"}), 201
     except Exception as e:
-        db.session.rollback()
-        return jsonify({"message": "Error al añadir dispositivo", "error": str(e)}), 400
-
-@app.route('/assign-role', methods=['POST'])
-@jwt_required()
-def assign_role():
-    """Asignar un rol a un usuario (solo admin)"""
-    current_user = get_jwt_identity()
-    if current_user['role'] != 'Admin':
-        return jsonify({"message": "No autorizado"}), 403
-
-    data = request.json
-    user = User.query.get(data['user_id'])
-    if user:
-        user.role = data['role']
-        try:
-            db.session.commit()
-            return jsonify({"message": f"Rol asignado a {user.username} como {user.role}"}), 200
-        except Exception as e:
-            db.session.rollback()
-            return jsonify({"message": "Error al asignar rol", "error": str(e)}), 400
-    return jsonify({"message": "Usuario no encontrado"}), 404
-
-@app.route('/sensor-status', methods=['GET'])
-@jwt_required()
-def sensor_status():
-    """Obtener el estado de los sensores asociados al usuario autenticado"""
-    current_user = get_jwt_identity()
-    devices = Device.query.filter_by(user_id=current_user['id']).all()
-    status_list = []
-    for device in devices:
-        status_list.append({
-            "device_id": device.device_id,
-            "device_name": device.device_name,
-            "status": device.status
-        })
-    return jsonify({"sensor_status": status_list}), 200
+        print(f"[ERROR] Error al añadir dispositivo: {e}")
+        return jsonify({"message": "Error al añadir dispositivo", "error": str(e)}), 500
 
 # Ejecutar el servidor
 if __name__ == '__main__':
-    app.run(debug=False, host="0.0.0.0", port=5000)
+    app.run(debug=True, host="0.0.0.0", port=5000)

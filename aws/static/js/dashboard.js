@@ -1,11 +1,10 @@
+// Obtener elementos del DOM
 const sensorSelect = document.getElementById('sensorSelect');
 const tempCtx = document.getElementById('temperatureChart').getContext('2d');
 const type1Ctx = document.getElementById('type1Chart').getContext('2d');
 const loadingSpinner = document.getElementById('loadingSpinner');
 const lastTemperature = document.getElementById('lastTemperature');
 const lastType1 = document.getElementById('lastType1');
-const type1Label = document.getElementById('type1Label');
-const type1GraphLabel = document.getElementById('type1GraphLabel');
 
 // Variables globales
 let temperatureData = [];
@@ -25,20 +24,75 @@ const type1Chart = new Chart(type1Ctx, {
   options: { responsive: true },
 });
 
+// Función genérica para realizar solicitudes API con token JWT
+async function apiRequest(url, method = "GET", body = null) {
+  const token = localStorage.getItem("access_token");
+
+  if (!token) {
+      console.error("Token JWT faltante. Redirigiendo al login...");
+      window.location.href = "/";
+      return null;
+  }
+
+  try {
+      const headers = {
+          "Authorization": `Bearer ${token}`,
+          "Content-Type": "application/json",
+      };
+
+      console.log(`Enviando solicitud a ${url} con token:`, token);
+
+      const options = { method, headers };
+      if (body) {
+          options.body = JSON.stringify(body);
+      }
+
+      const response = await fetch(url, options);
+
+      if (response.status === 401) {
+          console.warn("Token inválido o expirado. Redirigiendo al login...");
+          localStorage.removeItem("access_token");
+          window.location.href = "/";
+          return null;
+      }
+
+      if (!response.ok) {
+          console.error(`Error en la solicitud (${response.status}):`, await response.text());
+          return null;
+      }
+
+      return await response.json();
+  } catch (error) {
+      console.error("Error al conectar con la API:", error);
+      return null;
+  }
+}
+
+// Cargar datos iniciales del dashboard
+async function loadDashboard() {
+  const sensors = await apiRequest("/dashboard");
+
+  if (sensors) {
+      console.log("Datos del dashboard:", sensors);
+      fetchSensors();
+  } else {
+      console.error("No se pudieron cargar los datos del dashboard.");
+  }
+}
+
 // Obtener lista de sensores
 async function fetchSensors() {
-  try {
-    const response = await fetch('/api/sensors'); // Cambia al endpoint correcto
-    const sensors = await response.json();
+  const sensors = await apiRequest("/api/sensors");
 
-    sensors.forEach(sensor => {
-      const option = document.createElement('option');
-      option.value = sensor.id;
-      option.textContent = `${sensor.name} (ID: ${sensor.id})`;
-      sensorSelect.appendChild(option);
-    });
-  } catch (error) {
-    console.error('Error obteniendo sensores:', error);
+  if (sensors && Array.isArray(sensors)) {
+      sensors.forEach(sensor => {
+          const option = document.createElement('option');
+          option.value = sensor.id;
+          option.textContent = `${sensor.name} (ID: ${sensor.id})`;
+          sensorSelect.appendChild(option);
+      });
+  } else {
+      console.error("No se pudieron cargar los sensores.");
   }
 }
 
@@ -49,32 +103,33 @@ async function updateCharts(sensorId) {
   loadingSpinner.style.display = 'block';
 
   try {
-    const response = await fetch(`/api/data?sensor_id=${sensorId}`); // Cambia al endpoint correcto
-    const data = await response.json();
+      const data = await apiRequest(`/api/data?sensor_id=${sensorId}`);
 
-    // Actualizar datos
-    timestamps = data.map(d => d.timestamp);
-    temperatureData = data.map(d => d.temperature);
-    type1Data = data.map(d => d.type1);
+      if (data && Array.isArray(data)) {
+          // Actualizar datos
+          timestamps = data.map(d => d.timestamp);
+          temperatureData = data.map(d => d.temperature);
+          type1Data = data.map(d => d.type1);
 
-    // Actualizar gráficos
-    temperatureChart.data.labels = timestamps;
-    temperatureChart.data.datasets[0].data = temperatureData;
-    temperatureChart.update();
+          // Actualizar gráficos
+          temperatureChart.data.labels = timestamps;
+          temperatureChart.data.datasets[0].data = temperatureData;
+          temperatureChart.update();
 
-    type1Chart.data.labels = timestamps;
-    type1Chart.data.datasets[0].data = type1Data;
-    type1Chart.update();
+          type1Chart.data.labels = timestamps;
+          type1Chart.data.datasets[0].data = type1Data;
+          type1Chart.update();
 
-    // Actualizar etiquetas y cajas de datos
-    lastTemperature.textContent = `${temperatureData[0]} °C`;
-    lastType1.textContent = `${type1Data[0]}`;
-    type1Label.textContent = `Último Dato (${data[0].type1_name})`;
-    type1GraphLabel.textContent = `Gráfico (${data[0].type1_name})`;
+          // Actualizar etiquetas y cajas de datos
+          lastTemperature.textContent = `${temperatureData[0]} °C`;
+          lastType1.textContent = `${type1Data[0]}`;
+      } else {
+          console.error("No se encontraron datos para el sensor seleccionado.");
+      }
   } catch (error) {
-    console.error('Error actualizando gráficos:', error);
+      console.error("Error actualizando gráficos:", error);
   } finally {
-    loadingSpinner.style.display = 'none';
+      loadingSpinner.style.display = 'none';
   }
 }
 
@@ -84,5 +139,5 @@ sensorSelect.addEventListener('change', () => {
   updateCharts(sensorId);
 });
 
-// Inicializar
-fetchSensors();
+// Ejecutar cuando la página se cargue
+window.onload = loadDashboard;
