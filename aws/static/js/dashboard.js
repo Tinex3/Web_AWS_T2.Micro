@@ -14,35 +14,40 @@ let timestamps = [];
 // Inicializar gráficos
 const temperatureChart = new Chart(tempCtx, {
   type: 'line',
-  data: { labels: [], datasets: [{ label: 'Temperatura (°C)', data: [], borderColor: 'red', tension: 0.4 }] },
+  data: { 
+    labels: [], 
+    datasets: [{ 
+      label: 'Temperatura (°C)', 
+      data: [], 
+      borderColor: 'red', 
+      tension: 0.4 
+    }] 
+  },
   options: { responsive: true },
 });
 
 const type1Chart = new Chart(type1Ctx, {
   type: 'line',
-  data: { labels: [], datasets: [{ label: 'Tipo 1', data: [], borderColor: 'blue', tension: 0.4 }] },
+  data: { 
+    labels: [], 
+    datasets: [{ 
+      label: 'Tipo 1', 
+      data: [], 
+      borderColor: 'blue', 
+      tension: 0.4 
+    }] 
+  },
   options: { responsive: true },
 });
 
-// Función genérica para realizar solicitudes API con token JWT
+// Función genérica para realizar solicitudes API con cookies
 async function apiRequest(url, method = "GET", body = null) {
-  const token = localStorage.getItem("access_token");
-
-  if (!token) {
-      console.error("Token JWT faltante. Redirigiendo al login...");
-      window.location.href = "/";
-      return null;
-  }
-
   try {
       const headers = {
-          "Authorization": `Bearer ${token}`,
           "Content-Type": "application/json",
       };
 
-      console.log(`Enviando solicitud a ${url} con token:`, token);
-
-      const options = { method, headers };
+      const options = { method, headers, credentials: "include" }; // Enviar cookies automáticamente
       if (body) {
           options.body = JSON.stringify(body);
       }
@@ -50,8 +55,7 @@ async function apiRequest(url, method = "GET", body = null) {
       const response = await fetch(url, options);
 
       if (response.status === 401) {
-          console.warn("Token inválido o expirado. Redirigiendo al login...");
-          localStorage.removeItem("access_token");
+          console.warn("Sesión no válida. Redirigiendo al login...");
           window.location.href = "/";
           return null;
       }
@@ -70,29 +74,34 @@ async function apiRequest(url, method = "GET", body = null) {
 
 // Cargar datos iniciales del dashboard
 async function loadDashboard() {
-  const sensors = await apiRequest("/dashboard");
+  try {
+      const sensors = await apiRequest("/api/sensors");
 
-  if (sensors) {
-      console.log("Datos del dashboard:", sensors);
-      fetchSensors();
-  } else {
-      console.error("No se pudieron cargar los datos del dashboard.");
+      if (sensors) {
+          console.log("Sensores disponibles:", sensors);
+          populateSensorDropdown(sensors);
+      } else {
+          console.error("No se pudieron cargar los sensores.");
+      }
+  } catch (error) {
+      console.error("Error al cargar el dashboard:", error);
   }
 }
 
-// Obtener lista de sensores
-async function fetchSensors() {
-  const sensors = await apiRequest("/api/sensors");
+// Popular el dropdown con sensores
+function populateSensorDropdown(sensors) {
+  sensorSelect.innerHTML = ""; // Limpiar opciones previas
+  sensors.forEach(sensor => {
+      const option = document.createElement('option');
+      option.value = sensor.id;
+      option.textContent = `${sensor.name} (ID: ${sensor.id})`;
+      sensorSelect.appendChild(option);
+  });
 
-  if (sensors && Array.isArray(sensors)) {
-      sensors.forEach(sensor => {
-          const option = document.createElement('option');
-          option.value = sensor.id;
-          option.textContent = `${sensor.name} (ID: ${sensor.id})`;
-          sensorSelect.appendChild(option);
-      });
-  } else {
-      console.error("No se pudieron cargar los sensores.");
+  // Seleccionar el primer sensor automáticamente
+  if (sensors.length > 0) {
+      sensorSelect.value = sensors[0].id;
+      updateCharts(sensors[0].id);
   }
 }
 
@@ -120,14 +129,14 @@ async function updateCharts(sensorId) {
           type1Chart.data.datasets[0].data = type1Data;
           type1Chart.update();
 
-          // Actualizar etiquetas y cajas de datos
-          lastTemperature.textContent = `${temperatureData[0]} °C`;
-          lastType1.textContent = `${type1Data[0]}`;
+          // Actualizar etiquetas de últimos datos
+          lastTemperature.textContent = `${temperatureData[temperatureData.length - 1]} °C`;
+          lastType1.textContent = `${type1Data[type1Data.length - 1]}`;
       } else {
           console.error("No se encontraron datos para el sensor seleccionado.");
       }
   } catch (error) {
-      console.error("Error actualizando gráficos:", error);
+      console.error("Error al actualizar los gráficos:", error);
   } finally {
       loadingSpinner.style.display = 'none';
   }

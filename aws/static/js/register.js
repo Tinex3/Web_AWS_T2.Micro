@@ -20,7 +20,7 @@ document.getElementById("register-form").addEventListener("submit", async functi
 
     try {
         // Mostrar datos enviados en la consola para depuración
-        console.log("Datos enviados:", JSON.stringify({ username, email, password }));
+        console.log("Enviando datos de registro:", { username, email, password });
 
         // Enviar solicitud al servidor
         const response = await fetch("/register", {
@@ -35,6 +35,9 @@ document.getElementById("register-form").addEventListener("submit", async functi
         if (response.ok) {
             const result = await response.json();
             successMessage.textContent = result.message || "¡Registro exitoso!";
+            console.log("Registro exitoso:", result);
+
+            // Redirigir al login después de un breve tiempo
             setTimeout(() => {
                 window.location.href = "/"; // Redirigir al login
             }, 2000); // Esperar 2 segundos antes de redirigir
@@ -42,11 +45,11 @@ document.getElementById("register-form").addEventListener("submit", async functi
             // Manejar errores específicos del servidor
             const errorData = await response.json();
             errorMessage.textContent = errorData.message || "Error al registrar usuario.";
-            console.error("Error en respuesta del servidor:", errorData);
+            console.error("Error del servidor:", errorData);
         }
     } catch (error) {
         // Manejar errores de red o de conexión
         errorMessage.textContent = "No se pudo conectar al servidor.";
-        console.error("Error:", error);
+        console.error("Error de conexión:", error);
     }
 });
